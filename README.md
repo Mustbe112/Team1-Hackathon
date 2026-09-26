@@ -20,6 +20,8 @@ An off-chain **Keeper** — permissionless, holding only gas — watches for que
 
 No second signature. No wallet to open. The borrower never has to notice.
 
+![Xiaohei pulls a borrower's loan out before the governance gate closes: a proposed 60% threshold below the 70% exit rule triggers an automatic exit during the timelock.](assets/govexit-illustrations/01-exit-before-governance-change.png)
+
 ## How it works
 
 1. **Alice opens a Position** (AVAX Collateral, mUSDC Debt) and sets an **Exit rule** with a **Minimum threshold** — she has already approved `GovExit` as her **Exit agent** in the pool.

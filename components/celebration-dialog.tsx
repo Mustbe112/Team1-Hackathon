@@ -10,7 +10,7 @@ export type CelebrationRow = { label: string; value: string };
  * The canonical celebration dialog — composed twice by the governance panel:
  * the automatic exit (phase A) and the executed proposal (phase B).
  *
- * Purely presentational. Callers decide *when* it opens (`isNewExit`,
+ * Purely presentational. Callers decide *when* it opens (`shouldCelebrateExit`,
  * `shouldCelebrateExecution`) and *what* shows; rows arrive pre-formatted.
  * Keyboard: Escape, overlay click, and the acknowledge button all close; Tab
  * wraps inside the dialog; focus is restored to what was focused before

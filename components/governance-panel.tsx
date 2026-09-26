@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { readContract, waitForTransactionReceipt, writeContract } from "viem/actions";
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
@@ -21,15 +21,13 @@ import {
   canExecuteProposal,
   explorerTxUrl,
   formatThresholdChange,
-  initialExitWatch,
-  isNewExit,
   pickLatestLog,
   ProposalState,
   proposalStateLabel,
   proposalCountdownCopy,
   runProposalExecution,
   shouldCelebrateExecution,
-  type ExitWatch,
+  shouldCelebrateExit,
 } from "@/lib/governance";
 import { scanLogsIncremental, type ChainLog } from "@/lib/logs";
 import { bpsToCopy, formatDecimal } from "@/lib/position";
@@ -58,6 +56,27 @@ function shortHash(hash: string): string {
   return `${hash.slice(0, 10)}…${hash.slice(-6)}`;
 }
 
+/** Per-wallet key for the exit receipt the user has already been shown. */
+const EXIT_ACK_PREFIX = "govexit:exit-ack:";
+
+function exitAckKey(address: string | undefined): string | null {
+  return address ? `${EXIT_ACK_PREFIX}${address.toLowerCase()}` : null;
+}
+
+/** The last exit receipt this wallet acknowledged, or null (SSR-safe). */
+function readAcknowledgedExit(address: string | undefined): `0x${string}` | null {
+  const key = exitAckKey(address);
+  if (typeof window === "undefined" || key === null) return null;
+  const stored = window.localStorage.getItem(key);
+  return stored !== null && stored.startsWith("0x") ? (stored as `0x${string}`) : null;
+}
+
+function writeAcknowledgedExit(address: string | undefined, hash: `0x${string}`): void {
+  const key = exitAckKey(address);
+  if (typeof window === "undefined" || key === null) return;
+  window.localStorage.setItem(key, hash);
+}
+
 /**
  * Governance panel (issue 14): the queued Proposal (current → proposed
  * Liquidation threshold), a live countdown anchored on on-chain `executeAfter`,
@@ -82,10 +101,18 @@ export function GovernancePanel() {
   const [executionHash, setExecutionHash] = useState<`0x${string}` | null>(null);
   const [celebrationOpen, setCelebrationOpen] = useState(false);
   const [executionCelebrationOpen, setExecutionCelebrationOpen] = useState(false);
-  // Live-only exit watch: the receipt hash captured when the exit scan first
-  // resolved on this page. A reload never re-triggers the celebration because
-  // the baseline is re-captured on mount and nothing is persisted.
-  const exitWatchRef = useRef<ExitWatch>(initialExitWatch());
+  // The exit receipt this wallet has already been shown the celebration for.
+  // Persisted per wallet so the payoff survives a reload and is quiet for an
+  // old exit, but reappears for every new one. `forAddress` gates hydration so
+  // a wallet switch cannot celebrate against the prior wallet's ack.
+  const [exitAck, setExitAck] = useState<{
+    forAddress: string | undefined;
+    hash: `0x${string}` | null;
+  } | null>(null);
+  const acknowledgedExit =
+    exitAck !== null && exitAck.forAddress === address?.toLowerCase()
+      ? exitAck.hash
+      : undefined;
 
   const readReady = Boolean(publicClient && pool && governance && govExit);
 
@@ -311,22 +338,36 @@ export function GovernancePanel() {
   const currentDebt = positionQuery.data?.[1];
   const latestExitHash = exit?.transactionHash ?? null;
 
-  // Celebrate only when the receipt changes during this session: the first
-  // resolved poll seeds the baseline, a changed hash pops the modal, and the
-  // baseline moves with it so the same exit never announces itself twice.
+  // Reload the acknowledged receipt when the wallet changes.
   useEffect(() => {
-    if (exitLogQuery.isLoading) return;
-    const watch = exitWatchRef.current;
-    if (!watch.initialized) {
-      watch.initialized = true;
-      watch.baseline = latestExitHash;
-      return;
-    }
-    if (isNewExit(watch, latestExitHash)) {
-      watch.baseline = latestExitHash;
+    setExitAck({
+      forAddress: address?.toLowerCase(),
+      hash: readAcknowledgedExit(address),
+    });
+  }, [address]);
+
+  // Celebrate any exit receipt this wallet has not acknowledged — whether the
+  // keeper closed the position while watching, before this page load, or on
+  // a fresh browser. Wait until ack is hydrated for this wallet.
+  useEffect(() => {
+    if (acknowledgedExit === undefined) return;
+    if (shouldCelebrateExit(acknowledgedExit, latestExitHash)) {
       setCelebrationOpen(true);
+    } else {
+      setCelebrationOpen(false);
     }
-  }, [latestExitHash, exitLogQuery.isLoading]);
+  }, [acknowledgedExit, latestExitHash]);
+
+  function acknowledgeExit() {
+    setCelebrationOpen(false);
+    if (latestExitHash !== null) {
+      writeAcknowledgedExit(address, latestExitHash);
+      setExitAck({
+        forAddress: address?.toLowerCase(),
+        hash: latestExitHash,
+      });
+    }
+  }
 
   if (!pool || !governance || !govExit) {
     return (
@@ -483,7 +524,7 @@ export function GovernancePanel() {
     </StepCard>
     <CelebrationDialog
       open={celebrationOpen}
-      onClose={() => setCelebrationOpen(false)}
+      onClose={acknowledgeExit}
       title="Your position closed itself."
       copy="GovExit saw the proposal cross your rule and closed the position during the waiting period. You didn't sign anything."
       rows={[

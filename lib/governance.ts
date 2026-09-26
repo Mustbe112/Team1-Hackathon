@@ -185,30 +185,21 @@ export async function runProposalExecution({ send, wait, refresh }: {
 }
 
 /**
- * The live-only celebration gate (the exit pop-up).
+ * The exit celebration gate (acknowledged-based).
  *
- * The panel keeps one mutable watch: the exit receipt hash captured when the
- * exit scan first resolved on this page. A celebration fires only when the
- * latest receipt *differs* from that baseline — so an exit that happened
- * before the page opened never re-announces itself, and a reload never
- * re-triggers. Nothing is persisted: the baseline lives only in memory.
+ * Fires the first time a wallet encounters a given exit receipt — live, after
+ * a reload, or on a fresh browser — and stays quiet for a receipt the wallet
+ * already acknowledged. The panel persists the acknowledged hash per wallet;
+ * a newer exit receipt celebrates again.
  */
-export type ExitWatch = {
-  initialized: boolean;
-  baseline: TransactionHash | null;
-};
-
-/** A fresh watch: the first resolved poll seeds the baseline. */
-export function initialExitWatch(): ExitWatch {
-  return { initialized: false, baseline: null };
-}
-
-/** True only for a receipt that is new relative to the watch's baseline. */
-export function isNewExit(watch: ExitWatch, current: TransactionHash | null | undefined): boolean {
-  if (!watch.initialized || current === undefined) {
+export function shouldCelebrateExit(
+  acknowledged: TransactionHash | null,
+  current: TransactionHash | null | undefined,
+): boolean {
+  if (current === null || current === undefined) {
     return false;
   }
-  return current !== watch.baseline;
+  return current !== acknowledged;
 }
 
 /**

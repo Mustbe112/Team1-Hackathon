@@ -7,14 +7,13 @@ import {
   explorerTxUrl,
   formatCountdown,
   formatThresholdChange,
-  initialExitWatch,
-  isNewExit,
   proposalCountdownCopy,
   pickLatestLog,
   proposalStateLabel,
   remainingSeconds,
   runProposalExecution,
   shouldCelebrateExecution,
+  shouldCelebrateExit,
 } from "./governance.ts";
 
 test("formatCountdown renders mm:ss below an hour and hh:mm:ss above", () => {
@@ -172,20 +171,20 @@ test("a queued proposal becomes executable at the on-chain deadline only", () =>
   assert.equal(canExecuteProposal(1, 1000n, undefined), false);
 });
 
-// The celebration is live-only: it fires when a receipt *changes* during the
-// session, and never re-fires for the exit that already existed at mount.
-test("the exit celebration fires only for a receipt newer than the mount baseline", () => {
-  const armed = (baseline: `0x${string}` | null) => ({ ...initialExitWatch(), initialized: true, baseline });
-  // The first poll resolving must seed the baseline, never fire — not even
-  // for an exit that happened before this page was opened.
-  assert.equal(isNewExit(initialExitWatch(), "0xabc"), false);
-  assert.equal(isNewExit(armed("0xabc"), "0xabc"), false);
-  assert.equal(isNewExit(armed("0xabc"), "0xbcd"), true);
-  // A failed read (undefined) must not celebrate or disturb the baseline.
-  assert.equal(isNewExit(armed("0xabc"), undefined), false);
-  // From "no exit at mount" to the first exit appearing live.
-  assert.equal(isNewExit(armed(null), null), false);
-  assert.equal(isNewExit(armed(null), "0xbcd"), true);
+// The exit celebration is acknowledged-based: it pops the first time a wallet
+// encounters a given exit receipt — live, after a reload, or on a fresh browser
+// — and stays quiet for a receipt the wallet already acknowledged. A newer exit
+// receipt pops again.
+test("the exit celebration fires for any receipt the wallet has not acknowledged", () => {
+  // No receipt yet, or a failed read: never celebrate.
+  assert.equal(shouldCelebrateExit(null, null), false);
+  assert.equal(shouldCelebrateExit("0xabc", undefined), false);
+  // A never-acknowledged exit — even one that predates this page load.
+  assert.equal(shouldCelebrateExit(null, "0xabc"), true);
+  // The receipt this wallet already acknowledged stays quiet, on every reload.
+  assert.equal(shouldCelebrateExit("0xabc", "0xabc"), false);
+  // A newer exit receipt pops again.
+  assert.equal(shouldCelebrateExit("0xabc", "0xbcd"), true);
 });
 
 // A proposal execution celebrates only on a receipt that proved success; an

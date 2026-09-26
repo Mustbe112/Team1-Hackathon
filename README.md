@@ -92,7 +92,7 @@ scripts/demo-run.sh 0.02 0.3 7000 6000 1
 
 - **contracts:** 71 Foundry tests, including an end-to-end `DemoFlow` and the exact boundary (`80→70` with minimum `70` = no exit; `80→69` = exit).
 - **keeper:** `node:test` cases for the pure decision logic (chunking, actionable gate, backoff).
-- **dashboard:** 33 `node:test` cases for the pure display logic (bps↔percent, health, countdown, ownership, error copy, exit celebration gate).
+- **dashboard:** 34 `node:test` cases for the pure display logic (bps↔percent, health, countdown, ownership, error copy, exit and execution celebration gates).
 
 ## What is mocked (and why)
 

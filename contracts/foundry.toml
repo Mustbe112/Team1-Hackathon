@@ -23,3 +23,19 @@ fuji = "https://api.avax-test.network/ext/bc/C/rpc"
 #
 #   [etherscan]
 #   fuji = { key = "${ROUTESCAN_API_KEY}", chain = 43113, url = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan" }
+#
+# RESOLVED 2026-09-26: the Builder Hub verifier was returning a server-side
+# `internal_error` ("Could not start verification"), and `api.snowtrace.io`
+# silently targets MAINNET (43114). The endpoint that worked, with no API key, is
+# the Snowtrace *testnet* gateway (which fronts Etherscan V2 for 43113):
+#
+#   forge verify-contract <address> <src/File.sol:Name> \
+#     --chain-id 43113 \
+#     --verifier custom \
+#     --verifier-url https://api-testnet.snowtrace.io/api \
+#     --constructor-args <abi-encoded> \
+#     --rpc-url fuji
+#
+# Routescan (`.../testnet/evm/43113/etherscan` above) also accepts keyless
+# submissions. Both are keyed by address; note the stale-record caveat on
+# `MockUSDC` in the root README.

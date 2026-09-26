@@ -30,14 +30,19 @@ No second signature. No wallet to open. The borrower never has to notice.
 
 ## Live on Avalanche Fuji
 
-| Contract | Address |
-|---|---|
-| `MockUSDC` | `0x84BDD89D2081BEe20f63FBD90A20d6a1D0f9Ad94` |
-| `MockLendingPool` | `0x25838379779FB4b229efbCCbb96d52aa94ddF278` |
-| `MockGovernance` | `0xAb01AFe53C0aFd8348a3117eb9487A82362B95EB` |
-| `GovExit` | `0x90970F046e70B4E11579566aD22F5CFb8AefC390` |
+| Contract | Address | Verified source |
+|---|---|---|
+| `MockUSDC` | `0x84BDD89D2081BEe20f63FBD90A20d6a1D0f9Ad94` | [Sourcify](https://sourcify.dev/#/lookup/0x84BDD89D2081BEe20f63FBD90A20d6a1D0f9Ad94) |
+| `MockLendingPool` | `0x25838379779FB4b229efbCCbb96d52aa94ddF278` | [Snowtrace](https://testnet.snowtrace.io/address/0x25838379779FB4b229efbCCbb96d52aa94ddF278#code) |
+| `MockGovernance` | `0xAb01AFe53C0aFd8348a3117eb9487A82362B95EB` | [Snowtrace](https://testnet.snowtrace.io/address/0xAb01AFe53C0aFd8348a3117eb9487A82362B95EB#code) |
+| `GovExit` | `0x90970F046e70B4E11579566aD22F5CFb8AefC390` | [Snowtrace](https://testnet.snowtrace.io/address/0x90970F046e70B4E11579566aD22F5CFb8AefC390#code) |
 
 - **Deploy block:** `58732756` (bounds every Keeper `getLogs` scan)
+- **`MockUSDC` source note:** the Fuji explorer carries a stale record at this
+  address and shows an unrelated contract's source. The address is fresh — its
+  runtime bytecode hash matches our compiled `MockUSDC`, and it was created by our
+  deploy tx `0xb3656d3d…` in block `58732756`. The correct source is verified on
+  [Sourcify](https://sourcify.dev/#/lookup/0x84BDD89D2081BEe20f63FBD90A20d6a1D0f9Ad94).
 - **Demo Admin (owns `MockGovernance`):** `0x1F23EbA427de7f924C1Af1e87D99fC797877e461`
 
 **Proof — a live automatic exit with no user signature after the rule was set:**

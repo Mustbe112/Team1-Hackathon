@@ -7,6 +7,7 @@ import {
   formatDecimal,
   healthStatus,
   maxBorrow,
+  openPositionError,
   parsePercentToBps,
   parseTokenAmount,
   validateOpenPosition,
@@ -124,4 +125,42 @@ test("validateOpenPosition rejects an empty Position and Debt above the ceiling"
     validateOpenPosition({ ...base, collateralWei: 0n, borrowAmountWei: 1n }).ok,
     false,
   );
+});
+
+test("a top-up includes existing debt after governance lowers the safety limit", () => {
+  const result = validateOpenPosition({
+    collateralWei: 20_000_000_000_000_000n,
+    borrowAmountWei: 200_000_000_000_000_000n,
+    existingCollateralWei: 10_000_000_000_000_000n,
+    existingDebtWei: 150_000_000_000_000_000n,
+    avaxPriceUsd: 20n * 10n ** 18n,
+    liquidationThresholdBps: 5000n,
+  });
+  assert.deepEqual(result, {
+    ok: false,
+    error: "Total debt would be 0.35 mUSDC, above the 0.3 mUSDC limit for your combined collateral. Add more AVAX or borrow less.",
+  });
+});
+
+test("existing collateral permits borrowing without another deposit up to the total ceiling", () => {
+  const input = {
+    collateralWei: 0n,
+    borrowAmountWei: 50_000_000_000_000_000n,
+    existingCollateralWei: 20_000_000_000_000_000n,
+    existingDebtWei: 150_000_000_000_000_000n,
+    avaxPriceUsd: 20n * 10n ** 18n,
+    liquidationThresholdBps: 5000n,
+  };
+  assert.equal(validateOpenPosition(input).ok, true);
+  assert.equal(validateOpenPosition({ ...input, borrowAmountWei: input.borrowAmountWei + 1n }).ok, false);
+});
+
+test("the wallet's raw collateral revert becomes an actionable message", () => {
+  for (const message of [
+    'Unable to calculate gas limit: execution reverted (unknown custom error) data="0x3a23d825"',
+    'The contract function "openPosition" reverted: InsufficientCollateral()',
+  ]) {
+    assert.equal(openPositionError(new Error(message)),
+      "Your combined collateral does not cover your existing debt plus this borrow at the current safety limit. Add more AVAX or borrow less.");
+  }
 });

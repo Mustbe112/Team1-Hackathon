@@ -5,6 +5,7 @@
  */
 
 export const mockLendingPoolAbi = [
+  { type: "error", name: "InsufficientCollateral", inputs: [] },
   {
     type: "function",
     name: "AVAX_PRICE_USD",

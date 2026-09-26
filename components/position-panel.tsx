@@ -15,6 +15,7 @@ import {
   formatDecimal,
   healthStatus,
   maxBorrow,
+  openPositionError,
   parsePercentToBps,
   parseTokenAmount,
   validateOpenPosition,
@@ -74,6 +75,7 @@ export function PositionPanel() {
   const healthQuery = useQuery({
     queryKey: ["govexit", "healthFactor", address],
     enabled: readReady,
+    refetchInterval: 5000,
     queryFn: () =>
       readContract(publicClient!, {
         address: pool!,
@@ -134,10 +136,13 @@ export function PositionPanel() {
 
   // "You can borrow up to …" preview for the amounts currently typed in step 1.
   const enteredCollateral = parseTokenAmount(openCollateral);
-  const borrowLimit =
-    enteredCollateral !== null && avaxPriceUsd !== undefined && thresholdBps !== undefined
-      ? maxBorrow(enteredCollateral, avaxPriceUsd, thresholdBps)
+  const totalBorrowLimit =
+    position !== undefined && enteredCollateral !== null && avaxPriceUsd !== undefined && thresholdBps !== undefined
+      ? maxBorrow(collateral + enteredCollateral, avaxPriceUsd, thresholdBps)
       : undefined;
+  const borrowLimit = totalBorrowLimit === undefined
+    ? undefined
+    : totalBorrowLimit > debt ? totalBorrowLimit - debt : 0n;
 
   const rule = ruleQuery.data;
   const ruleMinimumBps = rule?.[0];
@@ -194,7 +199,8 @@ export function PositionPanel() {
 
   async function handleOpenPosition(event: FormEvent) {
     event.preventDefault();
-    if (!writeReady || !walletClient || !publicClient || !pool) {
+    if (busy !== null) return;
+    if (!writeReady || !walletClient || !publicClient || !pool || !address) {
       setError("Connect your wallet to Avalanche Fuji to open a position.");
       return;
     }
@@ -204,23 +210,31 @@ export function PositionPanel() {
       setError("Enter amounts as plain decimals, e.g. 10 or 0.5.");
       return;
     }
-    if (avaxPriceUsd === undefined || thresholdBps === undefined) {
-      setError("Still reading the pool's price and safety limit.");
-      return;
-    }
-    const valid = validateOpenPosition({
-      collateralWei,
-      borrowAmountWei: borrowWei,
-      avaxPriceUsd,
-      liquidationThresholdBps: thresholdBps,
-    });
-    if (!valid.ok) {
-      setError(valid.error);
-      return;
-    }
     setError(null);
     try {
       setBusy("Opening your position…");
+      // Validate one fresh chain snapshot; governance or the keeper may have
+      // changed the position since the last dashboard poll.
+      const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
+      const [latestPosition, latestThreshold, latestPrice] = await Promise.all([
+        readContract(publicClient, { address: pool, abi: mockLendingPoolAbi, functionName: "positions", args: [address], blockNumber }),
+        readContract(publicClient, { address: pool, abi: mockLendingPoolAbi, functionName: "liquidationThresholdBps", blockNumber }),
+        readContract(publicClient, { address: pool, abi: mockLendingPoolAbi, functionName: "AVAX_PRICE_USD", blockNumber }),
+      ]);
+      queryClient.setQueryData(["govexit", "position", address], latestPosition);
+      queryClient.setQueryData(["govexit", "liquidationThresholdBps", address], latestThreshold);
+      const valid = validateOpenPosition({
+        collateralWei,
+        borrowAmountWei: borrowWei,
+        existingCollateralWei: latestPosition[0],
+        existingDebtWei: latestPosition[1],
+        avaxPriceUsd: latestPrice,
+        liquidationThresholdBps: latestThreshold,
+      });
+      if (!valid.ok) {
+        setError(valid.error);
+        return;
+      }
       const hash = await writeContract(walletClient, {
         address: pool,
         abi: mockLendingPoolAbi,
@@ -228,10 +242,13 @@ export function PositionPanel() {
         args: [borrowWei],
         value: collateralWei,
       });
-      await waitForTransactionReceipt(publicClient, { hash });
+      const receipt = await waitForTransactionReceipt(publicClient, { hash });
+      if (receipt.status !== "success") {
+        setError("The position transaction reverted. Refresh the current position and safety limit before trying again.");
+      }
       await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Transaction failed.");
+      setError(openPositionError(caught));
     } finally {
       setBusy(null);
     }
@@ -258,7 +275,7 @@ export function PositionPanel() {
         <form className="flex flex-col gap-3" onSubmit={handleOpenPosition}>
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-slate-400">Collateral (AVAX)</span>
+              <span className="text-xs font-medium text-slate-400">AVAX to add</span>
               <input
                 aria-label="Collateral AVAX"
                 className="w-32 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
@@ -269,7 +286,7 @@ export function PositionPanel() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-slate-400">Borrow (mUSDC)</span>
+              <span className="text-xs font-medium text-slate-400">mUSDC to borrow</span>
               <input
                 aria-label="Borrow mUSDC"
                 className="w-32 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
@@ -284,7 +301,7 @@ export function PositionPanel() {
               className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
               disabled={busy !== null || !writeReady}
             >
-              {busy === "Opening your position…" ? busy : "Open position"}
+              {busy === "Opening your position…" ? busy : active ? "Update position" : "Open position"}
             </button>
           </div>
 
@@ -295,8 +312,9 @@ export function PositionPanel() {
               {borrowLimit !== undefined && (
                 <>
                   {" "}
-                  — with {openCollateral} AVAX you can borrow up to{" "}
+                  — after adding {openCollateral} AVAX, you can borrow up to{" "}
                   <span className="text-slate-300">{formatDecimal(borrowLimit, 18)} mUSDC</span>
+                  {" "}more, accounting for your existing debt
                 </>
               )}
               .

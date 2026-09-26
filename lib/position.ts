@@ -103,6 +103,8 @@ export function formatDecimal(value: bigint, decimals: number): string {
 export type OpenPositionInput = {
   collateralWei: bigint;
   borrowAmountWei: bigint;
+  existingCollateralWei?: bigint;
+  existingDebtWei?: bigint;
   avaxPriceUsd: bigint;
   liquidationThresholdBps: bigint;
 };
@@ -114,19 +116,31 @@ export type ValidationResult = { ok: true } | { ok: false; error: string };
  * The wallet is the source of truth; this only avoids a guaranteed revert.
  */
 export function validateOpenPosition(input: OpenPositionInput): ValidationResult {
-  if (input.collateralWei <= 0n) {
+  const totalCollateral = (input.existingCollateralWei ?? 0n) + input.collateralWei;
+  if (totalCollateral <= 0n) {
     return { ok: false, error: "Enter AVAX Collateral above 0." };
   }
   const ceiling = maxBorrow(
-    input.collateralWei,
+    totalCollateral,
     input.avaxPriceUsd,
     input.liquidationThresholdBps,
   );
-  if (input.borrowAmountWei > ceiling) {
+  const totalDebt = (input.existingDebtWei ?? 0n) + input.borrowAmountWei;
+  if (totalDebt > ceiling) {
     return {
       ok: false,
-      error: `Debt would exceed the Liquidation threshold. Maximum borrow is ${formatDecimal(ceiling, 18)} mUSDC.`,
+      error: `Total debt would be ${formatDecimal(totalDebt, 18)} mUSDC, above the ${formatDecimal(ceiling, 18)} mUSDC limit for your combined collateral. Add more AVAX or borrow less.`,
     };
   }
   return { ok: true };
+}
+
+/** Wallet providers may wrap custom errors without decoding their selector. */
+export function openPositionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (/InsufficientCollateral|0x3a23d825/i.test(message)) {
+    return "Your combined collateral does not cover your existing debt plus this borrow at the current safety limit. Add more AVAX or borrow less.";
+  }
+  if (/user rejected|user denied/i.test(message)) return "Transaction cancelled in your wallet.";
+  return "Could not complete the position update. Check your wallet for a pending or failed transaction and refresh the current position before retrying.";
 }

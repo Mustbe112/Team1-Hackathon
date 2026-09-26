@@ -1,0 +1,20 @@
+{
+  "name": "govexit-keeper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GovExit Keeper: deterministic, gas-only watcher that calls GovExit.checkAndExit when a queued Proposal trips a Protected user's Exit rule.",
+  "scripts": {
+    "start": "tsx index.ts",
+    "test": "tsx --test logic.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

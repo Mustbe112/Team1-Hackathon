@@ -1,10 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { readContract } from "viem/actions";
+import { readContract, waitForTransactionReceipt, writeContract } from "viem/actions";
 import { avalancheFuji } from "wagmi/chains";
-import { useAccount, usePublicClient } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
 import { StepCard } from "@/components/step-card";
 import {
@@ -17,6 +17,7 @@ import {
 import { env } from "@/lib/env";
 import {
   avaxReturned,
+  canExecuteProposal,
   explorerTxUrl,
   formatCountdown,
   formatThresholdChange,
@@ -68,7 +69,11 @@ export function GovernancePanel() {
   const governance = env.addresses.governance;
   const govExit = env.addresses.govExit;
   const publicClient = usePublicClient();
-  const { address } = useAccount();
+  const { address, chain } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const queryClient = useQueryClient();
+  const [executing, setExecuting] = useState(false);
+  const [executionError, setExecutionError] = useState<string | null>(null);
 
   const readReady = Boolean(publicClient && pool && governance && govExit);
 
@@ -255,6 +260,30 @@ export function GovernancePanel() {
         ? "…"
         : proposalStateLabel(proposalState);
 
+  const executable = canExecuteProposal(proposalState, executeAfter, clock?.chainNow);
+  const writeReady = Boolean(walletClient && address && chain?.id === avalancheFuji.id);
+
+  async function handleExecute() {
+    if (!executable || !writeReady || !walletClient || !publicClient || !governance || proposalId === undefined || executing) return;
+    setExecuting(true);
+    setExecutionError(null);
+    try {
+      const hash = await writeContract(walletClient, {
+        address: governance,
+        abi: mockGovernanceAbi,
+        functionName: "executeProposal",
+        args: [proposalId],
+      });
+      const receipt = await waitForTransactionReceipt(publicClient, { hash });
+      if (receipt.status !== "success") throw new Error("Proposal execution reverted.");
+      await queryClient.invalidateQueries({ queryKey: ["govexit"] });
+    } catch {
+      setExecutionError("The proposal could not be executed. Check your wallet and try again; the current limit has not been changed by this attempt.");
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   const exit = exitLogQuery.data;
   const preCollateral = exitSummaryQuery.data?.[0];
   const preDebt = exitSummaryQuery.data?.[1];
@@ -280,7 +309,7 @@ export function GovernancePanel() {
     <StepCard
       step={4}
       title="Watch the automatic exit"
-      subtitle="The waiting period runs. When it ends, the proposed safety limit takes effect — GovExit should already have closed your position."
+      subtitle="GovExit can close your position during the waiting period. Once the period ends, execute the proposal to apply the new safety limit."
     >
       <div className="flex flex-col gap-4">
         <h3 className="text-xs font-semibold text-slate-300">Proposal</h3>
@@ -297,7 +326,7 @@ export function GovernancePanel() {
         ) : (
           <dl className="mt-4 flex flex-col gap-2">
             <Row
-              label="Safety limit"
+              label="Proposed change"
               value={
                 currentBps === undefined || proposedBps === undefined
                   ? "…"
@@ -305,11 +334,35 @@ export function GovernancePanel() {
               }
             />
             <Row
+              label="Current safety limit"
+              value={thresholdQuery.data === undefined ? "…" : bpsToCopy(thresholdQuery.data)}
+            />
+            <Row
               label="Proposal status"
               value={proposalState === undefined ? "…" : proposalStateLabel(proposalState)}
             />
             <Row label="Takes effect in" value={countdownCopy} />
           </dl>
+        )}
+
+        {proposalState === ProposalState.QUEUED && (
+          <div className="rounded-md border border-slate-700 p-4">
+            <p className="text-sm text-slate-300">
+              {executable
+                ? "The waiting period has ended. Execute this proposal to apply the proposed limit to the pool."
+                : "The current limit stays unchanged while this proposal is queued. After the waiting period, execute it to apply the new limit."}
+            </p>
+            <button
+              type="button"
+              onClick={handleExecute}
+              disabled={!executable || !writeReady || executing}
+              className="mt-4 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
+            >
+              {executing ? "Executing proposal…" : "Execute proposal"}
+            </button>
+            {!writeReady && <p className="mt-2 text-xs text-slate-400">Connect your wallet to Avalanche Fuji to execute.</p>}
+            {executionError && <p role="alert" className="mt-2 text-sm text-red-400">{executionError}</p>}
+          </div>
         )}
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   avaxReturned,
+  canExecuteProposal,
   explorerTxUrl,
   formatCountdown,
   formatThresholdChange,
@@ -99,4 +100,17 @@ test("explorerTxUrl builds a Fuji transaction link", () => {
     explorerTxUrl("https://testnet.snowtrace.io/", "0x83d"),
     "https://testnet.snowtrace.io/tx/0x83d",
   );
+});
+
+// The governance contract permits execution only for queued proposals once
+// the latest on-chain block reaches the timelock, regardless of local time.
+test("a queued proposal becomes executable at the on-chain deadline only", () => {
+  assert.equal(canExecuteProposal(1, 1000n, 999n), false);
+  assert.equal(canExecuteProposal(1, 1000n, 1000n), true);
+  assert.equal(canExecuteProposal(1, 1000n, 1001n), true);
+  for (const state of [0, 2, 3, undefined]) {
+    assert.equal(canExecuteProposal(state, 1000n, 1001n), false);
+  }
+  assert.equal(canExecuteProposal(1, undefined, 1001n), false);
+  assert.equal(canExecuteProposal(1, 1000n, undefined), false);
 });

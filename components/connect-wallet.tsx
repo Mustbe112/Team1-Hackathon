@@ -71,22 +71,22 @@ export function ConnectWallet() {
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap justify-end gap-2">
         {connectors.length === 0 && (
-          <span className="text-sm text-slate-500">No wallet detected</span>
+          <span className="text-sm text-slate-500">Install a browser wallet to connect</span>
         )}
-        {connectors.map((connector) => (
+        {connectors.map((connector, index) => (
           <button
             key={connector.uid}
             type="button"
             onClick={() => connect({ connector })}
             disabled={isPending}
-            className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
+            className={index === 0 ? "rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60" : "rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:border-slate-400 disabled:opacity-60"}
           >
             {isPending ? "Connecting…" : `Connect ${connector.name}`}
           </button>
         ))}
       </div>
       {error && (
-        <p className="max-w-xs text-right text-xs text-red-400">{error.message}</p>
+        <p role="alert" className="max-w-xs text-right text-xs text-red-400">{error.message}</p>
       )}
     </div>
   );

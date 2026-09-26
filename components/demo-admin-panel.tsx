@@ -186,11 +186,11 @@ export function DemoAdminPanel() {
     <StepCard
       step={3}
       tone="admin"
-      title="Act as governance (Demo Admin)"
+      title="Propose a safety limit change"
       subtitle="Standing in for a DAO: propose lowering the safety limit. Only the Demo Admin wallet can queue a proposal — it is not a voter, and not the Keeper."
     >
-      <span className="rounded-md bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
-        Demo Admin · MockGovernance owner
+      <span className="rounded-md bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-200">
+        Demo admin access
       </span>
 
       <dl className="mt-4">
@@ -215,6 +215,11 @@ export function DemoAdminPanel() {
       ) : (
         <p className="mt-4 text-sm text-slate-500">Reading the Demo Admin owner…</p>
       )}
+
+      <p className="mt-4 text-xs leading-relaxed text-slate-400">
+        Queuing proposes a new limit; it does not change the current one. After the
+        waiting period, use Execute proposal in step 4 to apply the change.
+      </p>
 
       <form className="mt-4 flex flex-col gap-4" onSubmit={handleQueue}>
         <div className="flex flex-wrap items-end gap-4">
@@ -245,7 +250,7 @@ export function DemoAdminPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            className="rounded-md bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+            className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-50"
             disabled={busy !== null || !writeReady || !isOwner}
           >
             {busy === "queue" ? "Queueing proposal…" : "Queue governance proposal"}
@@ -260,7 +265,7 @@ export function DemoAdminPanel() {
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
       </form>
 
       <p className="mt-4 border-t border-amber-500/20 pt-4 text-xs leading-relaxed text-amber-200/70">

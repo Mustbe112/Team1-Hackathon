@@ -249,7 +249,7 @@ export function PositionPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="position-steps">
       <StepCard
         step={1}
         title="Borrow against your AVAX"
@@ -282,7 +282,7 @@ export function PositionPanel() {
             <button
               type="submit"
               className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
-              disabled={busy !== null || !address}
+              disabled={busy !== null || !writeReady}
             >
               {busy === "Opening your position…" ? busy : "Open position"}
             </button>
@@ -303,7 +303,7 @@ export function PositionPanel() {
             </p>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
         </form>
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
@@ -346,7 +346,7 @@ export function PositionPanel() {
                         : "rounded-md bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-300"
                     }
                   >
-                    {status === "SAFE" ? "SAFE" : "AT RISK"}
+                    {status === "SAFE" ? "Safe" : "At risk"}
                   </span>
                 )}
               </dd>
@@ -390,7 +390,7 @@ export function PositionPanel() {
           <button
             type="submit"
             className="w-fit rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
-            disabled={busy !== null || !address}
+            disabled={busy !== null || !writeReady}
           >
             {busy ?? (approved ? "Set protection rule" : "Approve GovExit & set rule")}
           </button>
@@ -399,7 +399,7 @@ export function PositionPanel() {
             Approving lets GovExit close your position for you. It can do nothing else.
           </p>
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
         </form>
 
         {address && (

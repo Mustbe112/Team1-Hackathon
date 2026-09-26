@@ -107,6 +107,13 @@ export const govExitAbi = [
 export const mockGovernanceAbi = [
   {
     type: "function",
+    name: "executeProposal",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "owner",
     stateMutability: "view",
     inputs: [],

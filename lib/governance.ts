@@ -130,3 +130,14 @@ function isAfter(candidate: OrderedLog, current: OrderedLog): boolean {
 export function explorerTxUrl(baseUrl: string, hash: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/tx/${hash}`;
 }
+
+/** Match the contract's timelock gate using the latest observed chain time. */
+export function canExecuteProposal(
+  state: number | undefined,
+  executeAfter: bigint | undefined,
+  chainNow: bigint | undefined,
+): boolean {
+  return state === ProposalState.QUEUED &&
+    executeAfter !== undefined && chainNow !== undefined &&
+    chainNow >= executeAfter;
+}

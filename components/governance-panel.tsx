@@ -6,7 +6,7 @@ import { readContract, waitForTransactionReceipt, writeContract } from "viem/act
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
-import { ExitCelebrationModal } from "@/components/exit-celebration-modal";
+import { CelebrationDialog } from "@/components/celebration-dialog";
 import { StepCard } from "@/components/step-card";
 import {
   exitTriggeredEvent,
@@ -28,6 +28,7 @@ import {
   proposalStateLabel,
   proposalCountdownCopy,
   runProposalExecution,
+  shouldCelebrateExecution,
   type ExitWatch,
 } from "@/lib/governance";
 import { scanLogsIncremental, type ChainLog } from "@/lib/logs";
@@ -80,6 +81,7 @@ export function GovernancePanel() {
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [executionHash, setExecutionHash] = useState<`0x${string}` | null>(null);
   const [celebrationOpen, setCelebrationOpen] = useState(false);
+  const [executionCelebrationOpen, setExecutionCelebrationOpen] = useState(false);
   // Live-only exit watch: the receipt hash captured when the exit scan first
   // resolved on this page. A reload never re-triggers the celebration because
   // the baseline is re-captured on mount and nothing is persisted.
@@ -284,7 +286,9 @@ export function GovernancePanel() {
         wait: (hash) => waitForTransactionReceipt(publicClient, { hash }),
         refresh: () => queryClient.invalidateQueries({ queryKey: ["govexit"] }),
       });
-      if (result.status === "not-submitted") {
+      if (shouldCelebrateExecution(result)) {
+        setExecutionCelebrationOpen(true);
+      } else if (result.status === "not-submitted") {
         setExecutionError("Could not submit the proposal execution. Check your wallet for a rejection or pending transaction before trying again.");
       } else if (result.status === "reverted") {
         setExecutionError("The execution transaction reverted. Check the current proposal and limit before trying again.");
@@ -477,15 +481,46 @@ export function GovernancePanel() {
       </div>
       </div>
     </StepCard>
-    <ExitCelebrationModal
+    <CelebrationDialog
       open={celebrationOpen}
       onClose={() => setCelebrationOpen(false)}
-      receipt={{
-        debtRepaidWei: preDebt,
-        avaxReturnedWei: returnedAvax,
-        transactionHash: latestExitHash,
-        explorerBase: EXPLORER_BASE,
-      }}
+      title="Your position closed itself."
+      copy="GovExit saw the proposal cross your rule and closed the position during the waiting period. You didn't sign anything."
+      rows={[
+        {
+          label: "Debt repaid",
+          value: preDebt === undefined ? "…" : `${formatDecimal(preDebt, 18)} mUSDC`,
+        },
+        {
+          label: "AVAX returned",
+          value: returnedAvax === undefined ? "…" : `${formatDecimal(returnedAvax, 18)} AVAX`,
+        },
+      ]}
+      transactionHash={latestExitHash}
+      explorerBase={EXPLORER_BASE}
+      linkLabel="View the exit transaction ↗"
+    />
+    <CelebrationDialog
+      open={executionCelebrationOpen}
+      onClose={() => setExecutionCelebrationOpen(false)}
+      title="The safety limit changed."
+      copy="The proposal executed after its waiting period and the pool now enforces the new safety limit."
+      rows={[
+        {
+          label: "Safety limit",
+          value:
+            queuedCurrentBps !== undefined && proposedBps !== undefined
+              ? formatThresholdChange(queuedCurrentBps, proposedBps)
+              : "…",
+        },
+        {
+          label: "Proposal",
+          value: proposalId === undefined ? "…" : `#${proposalId}`,
+        },
+      ]}
+      transactionHash={executionHash}
+      explorerBase={EXPLORER_BASE}
+      linkLabel="View the execution transaction ↗"
     />
     </>
   );

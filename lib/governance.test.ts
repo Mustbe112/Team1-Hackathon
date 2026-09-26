@@ -14,6 +14,7 @@ import {
   proposalStateLabel,
   remainingSeconds,
   runProposalExecution,
+  shouldCelebrateExecution,
 } from "./governance.ts";
 
 test("formatCountdown renders mm:ss below an hour and hh:mm:ss above", () => {
@@ -185,4 +186,13 @@ test("the exit celebration fires only for a receipt newer than the mount baselin
   // From "no exit at mount" to the first exit appearing live.
   assert.equal(isNewExit(armed(null), null), false);
   assert.equal(isNewExit(armed(null), "0xbcd"), true);
+});
+
+// A proposal execution celebrates only on a receipt that proved success; an
+// unknown confirmation stays an inline error and never pops a celebration.
+test("only a confirmed execution celebrates", () => {
+  assert.equal(shouldCelebrateExecution({ status: "confirmed", hash: "0x9" }), true);
+  assert.equal(shouldCelebrateExecution({ status: "not-submitted" }), false);
+  assert.equal(shouldCelebrateExecution({ status: "reverted", hash: "0x1" }), false);
+  assert.equal(shouldCelebrateExecution({ status: "unconfirmed", hash: "0x2" }), false);
 });

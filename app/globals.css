@@ -82,26 +82,26 @@ h1 span { color: #9caac0; }
 .skip-link { position: absolute; top: 16px; left: 16px; background: #69d8ed; color: #0c1119; border-radius: 8px; padding: 12px 20px; transform: translateY(-180%); z-index: 10; }
 .skip-link:focus { transform: translateY(0); }
 
-/* Exit celebration modal — the payoff moment. */
-.exit-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgb(12 17 25 / 0.78); }
-.exit-dialog { width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; background: #151c27; border: 1px solid #2b3545; border-radius: 8px; padding: 32px 24px 24px; }
-.exit-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgb(16 185 129 / 0.15); color: #6ee7b7; font-size: 24px; font-weight: 700; }
-.exit-title { font-size: 24px; font-weight: 600; letter-spacing: -.02em; color: #eef2f7; }
-.exit-copy { color: #b0bdd0; font-size: 15px; line-height: 1.6; max-width: 40ch; }
-.exit-rows { width: 100%; display: grid; gap: 0; }
-.exit-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #2b3545; font-size: 15px; }
-.exit-rows > div:first-child { border-top: 1px solid #2b3545; }
-.exit-rows dt { color: #9caac0; text-align: left; }
-.exit-rows dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: #eef2f7; overflow-wrap: anywhere; }
-.exit-link { color: #69d8ed; font-size: 15px; text-decoration: underline; text-underline-offset: 2px; }
-.exit-acknowledge { margin-top: 8px; width: 100%; background: #69d8ed; color: #0c1119; font-weight: 500; }
-.exit-acknowledge:hover { background: #9ce5f2; }
+/* Celebration dialog — the payoff moment, composed for exit and execution. */
+.celebration-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgb(12 17 25 / 0.78); }
+.celebration-dialog { width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; background: #151c27; border: 1px solid #2b3545; border-radius: 8px; padding: 32px 24px 24px; }
+.celebration-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgb(16 185 129 / 0.15); color: #6ee7b7; font-size: 24px; font-weight: 700; }
+.celebration-title { font-size: 24px; font-weight: 600; letter-spacing: -.02em; color: #eef2f7; }
+.celebration-copy { color: #b0bdd0; font-size: 15px; line-height: 1.6; max-width: 40ch; }
+.celebration-rows { width: 100%; display: grid; gap: 0; }
+.celebration-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #2b3545; font-size: 15px; }
+.celebration-rows > div:first-child { border-top: 1px solid #2b3545; }
+.celebration-rows dt { color: #9caac0; text-align: left; }
+.celebration-rows dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: #eef2f7; overflow-wrap: anywhere; }
+.celebration-link { color: #69d8ed; font-size: 15px; text-decoration: underline; text-underline-offset: 2px; }
+.celebration-acknowledge { margin-top: 8px; width: 100%; background: #69d8ed; color: #0c1119; font-weight: 500; }
+.celebration-acknowledge:hover { background: #9ce5f2; }
 @media (prefers-reduced-motion: no-preference) {
-  .exit-overlay { animation: exit-fade 200ms cubic-bezier(.4,0,.2,1); }
-  .exit-dialog { animation: exit-pop 250ms cubic-bezier(.4,0,.2,1); }
+  .celebration-overlay { animation: celebration-fade 200ms cubic-bezier(.4,0,.2,1); }
+  .celebration-dialog { animation: celebration-pop 250ms cubic-bezier(.4,0,.2,1); }
 }
-@keyframes exit-fade { from { opacity: 0; } }
-@keyframes exit-pop { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+@keyframes celebration-fade { from { opacity: 0; } }
+@keyframes celebration-pop { from { opacity: 0; transform: translateY(16px) scale(.96); } }
 @media (prefers-reduced-motion: no-preference) { button { transition: transform 150ms cubic-bezier(.4,0,.2,1), opacity 150ms cubic-bezier(.4,0,.2,1); } }
 @media (max-width: 767px) {
   .dashboard-shell { padding: 0 16px; }

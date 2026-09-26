@@ -210,3 +210,12 @@ export function isNewExit(watch: ExitWatch, current: TransactionHash | null | un
   }
   return current !== watch.baseline;
 }
+
+/**
+ * Celebrate a proposal execution only on a receipt that proved success. An
+ * unknown confirmation may or may not have executed — it stays an inline
+ * error, never a celebration.
+ */
+export function shouldCelebrateExecution(result: ProposalExecutionResult): boolean {
+  return result.status === "confirmed";
+}

@@ -306,8 +306,17 @@ export function PositionPanel() {
           {error && <p className="text-xs text-red-400">{error}</p>}
         </form>
 
+        <p className="mt-4 text-xs leading-relaxed text-slate-500">
+          The pool keeps one position per wallet — opening again adds the new collateral and debt
+          to this position.
+        </p>
+
         {address && active && (
-          <dl className="mt-4 flex flex-col gap-2 border-t border-slate-800 pt-4">
+          <div className="mt-4 border-t border-slate-800 pt-4">
+            <p className="text-xs font-medium text-slate-400">
+              Your position — total for this wallet
+            </p>
+            <dl className="mt-2 flex flex-col gap-2">
             <Row
               label="Collateral"
               value={positionQuery.isLoading ? "…" : `${formatDecimal(collateral, 18)} AVAX`}
@@ -342,7 +351,8 @@ export function PositionPanel() {
                 )}
               </dd>
             </div>
-          </dl>
+            </dl>
+          </div>
         )}
         {address && !active && (
           <p className="mt-4 border-t border-slate-800 pt-4 text-sm text-slate-500">

@@ -141,3 +141,46 @@ export function canExecuteProposal(
     executeAfter !== undefined && chainNow !== undefined &&
     chainNow >= executeAfter;
 }
+
+export function proposalCountdownCopy(
+  state: number | undefined,
+  executeAfter: bigint | undefined,
+  chainNow: bigint | undefined,
+  elapsedMs: number,
+): string {
+  if (state === undefined) return "…";
+  if (state !== ProposalState.QUEUED) return proposalStateLabel(state);
+  if (executeAfter === undefined || chainNow === undefined) return "…";
+  if (canExecuteProposal(state, executeAfter, chainNow)) return "00:00 · executable now";
+  const remaining = remainingSeconds(executeAfter, chainNow, elapsedMs);
+  return remaining === 0 ? "00:00 · awaiting chain confirmation" : formatCountdown(remaining);
+}
+
+type TransactionHash = `0x${string}`;
+export type ProposalExecutionResult =
+  | { status: "not-submitted" }
+  | { status: "confirmed" | "reverted" | "unconfirmed"; hash: TransactionHash };
+
+/** A failed receipt lookup cannot establish whether a submitted transaction succeeded. */
+export async function runProposalExecution({ send, wait, refresh }: {
+  send: () => Promise<TransactionHash>;
+  wait: (hash: TransactionHash) => Promise<{ status: "success" | "reverted" }>;
+  refresh: () => Promise<unknown>;
+}): Promise<ProposalExecutionResult> {
+  let hash: TransactionHash;
+  try {
+    hash = await send();
+  } catch {
+    return { status: "not-submitted" };
+  }
+  let result: ProposalExecutionResult;
+  try {
+    const receipt = await wait(hash);
+    result = { status: receipt.status === "success" ? "confirmed" : "reverted", hash };
+  } catch {
+    result = { status: "unconfirmed", hash };
+  }
+  // Refresh even after confirmation failure; a refresh failure does not undo a receipt.
+  try { await refresh(); } catch { /* Polling will retry the reads. */ }
+  return result;
+}

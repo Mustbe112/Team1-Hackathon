@@ -19,12 +19,12 @@ import {
   avaxReturned,
   canExecuteProposal,
   explorerTxUrl,
-  formatCountdown,
   formatThresholdChange,
   pickLatestLog,
   ProposalState,
   proposalStateLabel,
-  remainingSeconds,
+  proposalCountdownCopy,
+  runProposalExecution,
 } from "@/lib/governance";
 import { scanLogsIncremental, type ChainLog } from "@/lib/logs";
 import { bpsToCopy, formatDecimal } from "@/lib/position";
@@ -74,6 +74,7 @@ export function GovernancePanel() {
   const queryClient = useQueryClient();
   const [executing, setExecuting] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [executionHash, setExecutionHash] = useState<`0x${string}` | null>(null);
 
   const readReady = Boolean(publicClient && pool && governance && govExit);
 
@@ -247,18 +248,9 @@ export function GovernancePanel() {
   const shouldExit = shouldExitQuery.data === true;
 
   const clock = clockQuery.data;
-  const remaining =
-    executeAfter !== undefined && clock
-      ? remainingSeconds(executeAfter, clock.chainNow, nowMs - clock.fetchedAtMs)
-      : undefined;
-  const countdownCopy =
-    proposalState === ProposalState.QUEUED && remaining !== undefined
-      ? remaining === 0
-        ? "00:00 · executable now"
-        : formatCountdown(remaining)
-      : proposalState === undefined
-        ? "…"
-        : proposalStateLabel(proposalState);
+  const countdownCopy = proposalCountdownCopy(
+    proposalState, executeAfter, clock?.chainNow, clock ? nowMs - clock.fetchedAtMs : 0,
+  );
 
   const executable = canExecuteProposal(proposalState, executeAfter, clock?.chainNow);
   const writeReady = Boolean(walletClient && address && chain?.id === avalancheFuji.id);
@@ -267,18 +259,29 @@ export function GovernancePanel() {
     if (!executable || !writeReady || !walletClient || !publicClient || !governance || proposalId === undefined || executing) return;
     setExecuting(true);
     setExecutionError(null);
+    setExecutionHash(null);
     try {
-      const hash = await writeContract(walletClient, {
-        address: governance,
-        abi: mockGovernanceAbi,
-        functionName: "executeProposal",
-        args: [proposalId],
+      const result = await runProposalExecution({
+        send: async () => {
+          const hash = await writeContract(walletClient, {
+            address: governance,
+            abi: mockGovernanceAbi,
+            functionName: "executeProposal",
+            args: [proposalId],
+          });
+          setExecutionHash(hash);
+          return hash;
+        },
+        wait: (hash) => waitForTransactionReceipt(publicClient, { hash }),
+        refresh: () => queryClient.invalidateQueries({ queryKey: ["govexit"] }),
       });
-      const receipt = await waitForTransactionReceipt(publicClient, { hash });
-      if (receipt.status !== "success") throw new Error("Proposal execution reverted.");
-      await queryClient.invalidateQueries({ queryKey: ["govexit"] });
-    } catch {
-      setExecutionError("The proposal could not be executed. Check your wallet and try again; the current limit has not been changed by this attempt.");
+      if (result.status === "not-submitted") {
+        setExecutionError("Could not submit the proposal execution. Check your wallet for a rejection or pending transaction before trying again.");
+      } else if (result.status === "reverted") {
+        setExecutionError("The execution transaction reverted. Check the current proposal and limit before trying again.");
+      } else if (result.status === "unconfirmed") {
+        setExecutionError("Transaction submitted, but confirmation is unavailable. It may still execute or may already have executed. Check the transaction and current proposal before trying again.");
+      }
     } finally {
       setExecuting(false);
     }
@@ -361,9 +364,18 @@ export function GovernancePanel() {
               {executing ? "Executing proposal…" : "Execute proposal"}
             </button>
             {!writeReady && <p className="mt-2 text-xs text-slate-400">Connect your wallet to Avalanche Fuji to execute.</p>}
-            {executionError && <p role="alert" className="mt-2 text-sm text-red-400">{executionError}</p>}
           </div>
         )}
+
+        {executionHash && (
+          <p className="text-sm text-slate-300">
+            Execution transaction:{" "}
+            <a className="text-sky-400 underline" href={explorerTxUrl(EXPLORER_BASE, executionHash)} target="_blank" rel="noreferrer">
+              {shortHash(executionHash)}
+            </a>
+          </p>
+        )}
+        {executionError && <p role="alert" className="text-sm text-red-400">{executionError}</p>}
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
           The waiting period is mock governance timing

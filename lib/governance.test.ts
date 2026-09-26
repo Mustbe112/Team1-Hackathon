@@ -7,9 +7,11 @@ import {
   explorerTxUrl,
   formatCountdown,
   formatThresholdChange,
+  proposalCountdownCopy,
   pickLatestLog,
   proposalStateLabel,
   remainingSeconds,
+  runProposalExecution,
 } from "./governance.ts";
 
 test("formatCountdown renders mm:ss below an hour and hh:mm:ss above", () => {
@@ -21,6 +23,58 @@ test("formatCountdown renders mm:ss below an hour and hh:mm:ss above", () => {
   assert.equal(formatCountdown(3599), "59:59");
   assert.equal(formatCountdown(3600), "01:00:00");
   assert.equal(formatCountdown(3661), "01:01:01");
+});
+
+test("elapsed local time cannot announce execution before the chain deadline", () => {
+  assert.equal(proposalCountdownCopy(1, 1000n, 999n, 1000), "00:00 · awaiting chain confirmation");
+  assert.equal(proposalCountdownCopy(1, 1000n, 1000n, 0), "00:00 · executable now");
+  assert.equal(proposalCountdownCopy(1, 1000n, 940n, 0), "01:00");
+  assert.equal(proposalCountdownCopy(1, 1000n, undefined, 0), "…");
+  assert.equal(proposalCountdownCopy(2, 1000n, 1001n, 0), "Executed");
+});
+
+test("a confirmation timeout preserves the submitted hash and refreshes chain state", async () => {
+  let refreshed = false;
+  const result = await runProposalExecution({
+    send: async () => "0x123",
+    wait: async () => { throw new Error("Receipt timed out"); },
+    refresh: async () => { refreshed = true; },
+  });
+  assert.equal(result.status, "unconfirmed");
+  assert.equal(result.hash, "0x123");
+  assert.equal(refreshed, true);
+});
+
+test("a rejected wallet submission does not wait for a receipt", async () => {
+  const result = await runProposalExecution({
+    send: async () => { throw new Error("User rejected"); },
+    wait: async () => { assert.fail("No submitted hash to confirm"); },
+    refresh: async () => { assert.fail("No submitted transaction to refresh"); },
+  });
+  assert.deepEqual(result, { status: "not-submitted" });
+});
+
+test("a reverted receipt is distinct from unknown confirmation and refreshes state", async () => {
+  let refreshed = false;
+  const result = await runProposalExecution({
+    send: async () => "0x456",
+    wait: async (hash) => {
+      assert.equal(hash, "0x456");
+      return { status: "reverted" };
+    },
+    refresh: async () => { refreshed = true; },
+  });
+  assert.deepEqual(result, { status: "reverted", hash: "0x456" });
+  assert.equal(refreshed, true);
+});
+
+test("a successful receipt stays confirmed even when refreshing chain reads fails", async () => {
+  const result = await runProposalExecution({
+    send: async () => "0x789",
+    wait: async () => ({ status: "success" }),
+    refresh: async () => { throw new Error("RPC unavailable"); },
+  });
+  assert.deepEqual(result, { status: "confirmed", hash: "0x789" });
 });
 
 test("remainingSeconds anchors on the on-chain clock and local elapsed time", () => {

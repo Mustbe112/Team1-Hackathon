@@ -56,6 +56,72 @@ export function decideExit(rule: RuleState, shouldExit: boolean): boolean {
   return isActionable(rule) && shouldExit
 }
 
+/** A queued Proposal as the Keeper knows it from its `ProposalQueued` log. */
+export interface QueuedProposal {
+  id: bigint
+  newThresholdBps: bigint
+  executeAfter: bigint
+}
+
+/** A (user, proposal) pair worth an on-chain check. */
+export interface ExitCandidate {
+  user: string
+  proposalId: bigint
+  executeAfter: bigint
+}
+
+/**
+ * Only proposals still inside their Timelock window can fire: the contract
+ * refuses an exit once `block.timestamp >= executeAfter`, so a proposal at its
+ * deadline is already closed. Expired proposals are dead weight — dropping
+ * them keeps a growing proposal history from crowding out a fresh window.
+ */
+export function liveProposals(
+  proposals: Iterable<QueuedProposal>,
+  chainNow: bigint,
+): QueuedProposal[] {
+  const live: QueuedProposal[] = []
+  for (const proposal of proposals) {
+    if (chainNow < proposal.executeAfter) {
+      live.push(proposal)
+    }
+  }
+  return live
+}
+
+/**
+ * The only pairs worth an on-chain check: an actionable rule against a live
+ * proposal whose proposed threshold is strictly below the rule's minimum.
+ * Ordered by nearest deadline first, so the most urgent window is acted on
+ * before any other work can consume it. The contract re-verifies every
+ * condition (`shouldExit` and `checkAndExit`); this selection only keeps the
+ * working set small, it is never the authority.
+ */
+export function actionableCandidates(
+  users: Iterable<string>,
+  rules: ReadonlyMap<string, RuleState>,
+  proposals: Iterable<QueuedProposal>,
+  chainNow: bigint,
+): ExitCandidate[] {
+  const candidates: ExitCandidate[] = []
+  for (const proposal of liveProposals(proposals, chainNow)) {
+    for (const user of users) {
+      const rule = rules.get(user.toLowerCase())
+      if (rule === undefined || !isActionable(rule)) continue
+      if (proposal.newThresholdBps >= rule.minimumThresholdBps) continue
+      candidates.push({
+        user,
+        proposalId: proposal.id,
+        executeAfter: proposal.executeAfter,
+      })
+    }
+  }
+  candidates.sort((a, b) =>
+    a.executeAfter < b.executeAfter ? -1 : a.executeAfter > b.executeAfter ? 1 : 0,
+  )
+  return candidates
+}
+
 /** Exponential backoff (capped) for HTTP 429 pressure on `eth_getLogs`. */
 export function backoffDelayMs(attempt: number, baseMs = 500, maxMs = 15_000): number {
   const safeAttempt = Math.max(0, Math.floor(attempt))

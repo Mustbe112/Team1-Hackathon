@@ -39,7 +39,17 @@ import {
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { avalancheFuji } from 'viem/chains'
 
-import { backoffDelayMs, decideExit, isActionable, planChunks } from './logic.ts'
+import {
+  actionableCandidates,
+  backoffDelayMs,
+  decideExit,
+  isActionable,
+  liveProposals,
+  planChunks,
+  type ExitCandidate,
+  type QueuedProposal,
+  type RuleState,
+} from './logic.ts'
 
 // --- env loading (never log values) -----------------------------------------
 for (const candidate of ['../.env', '.env']) {
@@ -172,7 +182,8 @@ class Keeper {
   private readonly publicClient: PublicClient
   private readonly walletClient: WalletClient
   private readonly users = new Set<Address>()
-  private readonly proposals = new Set<bigint>()
+  /** Queued proposals; expired ones are pruned each tick so history stays bounded. */
+  private readonly proposals = new Map<bigint, QueuedProposal>()
   private ruleCursor: bigint
   private proposalCursor: bigint
   private readonly handled = new Set<string>()
@@ -214,16 +225,56 @@ class Keeper {
     }
   }
 
+  /**
+   * One bounded, deadline-aware pass. The working set is pruned to live
+   * windows and armed rules before any pair work, and each pair's failure is
+   * isolated so one RPC error cannot consume the remaining Timelock budget.
+   */
   private async tick(): Promise<void> {
-    const latest = await this.publicClient.getBlockNumber()
+    const block = await this.publicClient.getBlock({ blockTag: 'latest' })
+    const latest = block.number
+    if (latest === null) return
+    const chainNow = block.timestamp
     await this.scanRules(latest)
     await this.scanProposals(latest)
+
+    // Drop proposals whose window has closed: the contract refuses them, and
+    // rescanning dead history is what made a fresh 60s window unreachable.
+    const live = liveProposals(this.proposals.values(), chainNow)
+    if (live.length !== this.proposals.size) {
+      this.proposals.clear()
+      for (const proposal of live) {
+        this.proposals.set(proposal.id, proposal)
+      }
+    }
     if (this.users.size === 0 || this.proposals.size === 0) {
       return
     }
-    for (const proposalId of this.proposals) {
-      for (const user of this.users) {
-        await this.tryExit(user, proposalId)
+
+    // One rule read per user per tick (never per pair), with per-user failure
+    // isolation: a failed read keeps the user armed for the next tick.
+    const rules = await this.readRulesOnce()
+    this.pruneDisarmedUsers(rules)
+
+    // Nearest deadline first, so the most urgent window is acted on before
+    // any other pair work can consume it.
+    const candidates = actionableCandidates(this.users, rules, this.proposals.values(), chainNow)
+    if (candidates.length === 0) {
+      return
+    }
+    log(
+      `Actionable pairs: ${candidates.length}; nearest deadline in ` +
+        `${Number(candidates[0].executeAfter - chainNow)}s`,
+    )
+    for (const candidate of candidates) {
+      try {
+        await this.attemptExit(candidate, rules)
+      } catch (error) {
+        // Isolated per pair: one failure must not skip the remaining windows.
+        log(
+          `pair failed: user=${candidate.user} proposalId=${candidate.proposalId}: ` +
+            `${error instanceof Error ? error.message.split('\n')[0] : String(error)}`,
+        )
       }
     }
   }
@@ -261,16 +312,55 @@ class Keeper {
       this.config.logChunkSize,
     )
     for (const entry of logs) {
-      const proposalId = entry.args.proposalId as bigint
-      if (proposalId !== undefined) {
-        this.proposals.add(proposalId)
-        log(`Proposal detected: id=${proposalId}`)
+      const id = entry.args.proposalId as bigint
+      const newThresholdBps = entry.args.newThreshold as bigint
+      const executeAfter = entry.args.executeAfter as bigint
+      if (id !== undefined) {
+        this.proposals.set(id, { id, newThresholdBps, executeAfter })
+        log(`Proposal detected: id=${id} newThreshold=${newThresholdBps} executeAfter=${executeAfter}`)
       }
     }
     this.proposalCursor = latest
   }
 
-  private async readRule(user: Address) {
+  /** One rule read per armed user per tick, isolated per user. */
+  private async readRulesOnce(): Promise<Map<string, RuleState>> {
+    const results = await Promise.allSettled(
+      [...this.users].map(async (user) => {
+        const rule = await this.readRule(user)
+        return [user.toLowerCase(), rule] as const
+      }),
+    )
+    const rules = new Map<string, RuleState>()
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        rules.set(result.value[0], result.value[1])
+      } else {
+        log(
+          `rule read failed: ` +
+            `${result.reason instanceof Error ? result.reason.message.split('\n')[0] : String(result.reason)}`,
+        )
+      }
+    }
+    return rules
+  }
+
+  /**
+   * Prune users whose rule can no longer act, so the per-tick rule reads stay
+   * proportional to armed rules, not to history. Only a *successful* read
+   * prunes — a failed read keeps the user armed. A re-arm (RuleCreated) adds
+   * the user back on its next scan.
+   */
+  private pruneDisarmedUsers(rules: ReadonlyMap<string, RuleState>): void {
+    for (const user of this.users) {
+      const rule = rules.get(user.toLowerCase())
+      if (rule !== undefined && !isActionable(rule)) {
+        this.users.delete(user)
+      }
+    }
+  }
+
+  private async readRule(user: Address): Promise<RuleState> {
     const [minimumThresholdBps, active, triggered] = await this.publicClient.readContract({
       address: this.config.govExit,
       abi: govExitAbi,
@@ -280,22 +370,25 @@ class Keeper {
     return { minimumThresholdBps, active, triggered }
   }
 
-  private async tryExit(user: Address, proposalId: bigint): Promise<void> {
-    const dedupeKey = `${user.toLowerCase()}:${proposalId}`
+  private async attemptExit(
+    candidate: ExitCandidate,
+    rules: ReadonlyMap<string, RuleState>,
+  ): Promise<void> {
+    const user = getAddress(candidate.user)
+    const dedupeKey = `${user.toLowerCase()}:${candidate.proposalId}`
     if (this.handled.has(dedupeKey)) return
-
-    const rule = await this.readRule(user)
-    if (!isActionable(rule)) return
+    const rule = rules.get(user.toLowerCase())
+    if (rule === undefined) return
 
     const shouldExitNow = await this.publicClient.readContract({
       address: this.config.govExit,
       abi: govExitAbi,
       functionName: 'shouldExit',
-      args: [user, proposalId],
+      args: [user, candidate.proposalId],
     })
     if (!decideExit(rule, shouldExitNow)) return
 
-    log(`Rule trips: user=${user} proposalId=${proposalId} minimum=${rule.minimumThresholdBps}`)
+    log(`Rule trips: user=${user} proposalId=${candidate.proposalId} minimum=${rule.minimumThresholdBps}`)
     try {
       // Simulate first so the Keeper never broadcasts a guaranteed revert.
       const { request } = await this.publicClient.simulateContract({
@@ -303,18 +396,22 @@ class Keeper {
         address: this.config.govExit,
         abi: govExitAbi,
         functionName: 'checkAndExit',
-        args: [user, proposalId],
+        args: [user, candidate.proposalId],
       })
       const hash = await this.walletClient.writeContract(request)
-      log(`checkAndExit sent: user=${user} proposalId=${proposalId} tx=${hash}`)
+      log(`checkAndExit sent: user=${user} proposalId=${candidate.proposalId} tx=${hash}`)
       const receipt = await this.publicClient.waitForTransactionReceipt({ hash })
       log(`checkAndExit mined: tx=${hash} block=${receipt.blockNumber} status=${receipt.status}`)
-      this.handled.add(dedupeKey)
+      // Mark handled only on a successful receipt: a reverted exit must be
+      // retried while its window is still open, not suppressed forever.
+      if (receipt.status === 'success') {
+        this.handled.add(dedupeKey)
+      }
     } catch (error) {
       // The Timelock may have elapsed between shouldExit and send; that is a
       // no-op, not a Keeper failure.
       log(
-        `checkAndExit skipped for user=${user} proposalId=${proposalId}: ` +
+        `checkAndExit skipped for user=${user} proposalId=${candidate.proposalId}: ` +
           `${error instanceof Error ? error.message.split('\n')[0] : String(error)}`,
       )
     }

@@ -160,7 +160,6 @@ type TransactionHash = `0x${string}`;
 export type ProposalExecutionResult =
   | { status: "not-submitted" }
   | { status: "confirmed" | "reverted" | "unconfirmed"; hash: TransactionHash };
-
 /** A failed receipt lookup cannot establish whether a submitted transaction succeeded. */
 export async function runProposalExecution({ send, wait, refresh }: {
   send: () => Promise<TransactionHash>;
@@ -183,4 +182,31 @@ export async function runProposalExecution({ send, wait, refresh }: {
   // Refresh even after confirmation failure; a refresh failure does not undo a receipt.
   try { await refresh(); } catch { /* Polling will retry the reads. */ }
   return result;
+}
+
+/**
+ * The live-only celebration gate (the exit pop-up).
+ *
+ * The panel keeps one mutable watch: the exit receipt hash captured when the
+ * exit scan first resolved on this page. A celebration fires only when the
+ * latest receipt *differs* from that baseline — so an exit that happened
+ * before the page opened never re-announces itself, and a reload never
+ * re-triggers. Nothing is persisted: the baseline lives only in memory.
+ */
+export type ExitWatch = {
+  initialized: boolean;
+  baseline: TransactionHash | null;
+};
+
+/** A fresh watch: the first resolved poll seeds the baseline. */
+export function initialExitWatch(): ExitWatch {
+  return { initialized: false, baseline: null };
+}
+
+/** True only for a receipt that is new relative to the watch's baseline. */
+export function isNewExit(watch: ExitWatch, current: TransactionHash | null | undefined): boolean {
+  if (!watch.initialized || current === undefined) {
+    return false;
+  }
+  return current !== watch.baseline;
 }

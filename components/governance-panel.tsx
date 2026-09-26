@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readContract, waitForTransactionReceipt, writeContract } from "viem/actions";
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
+import { ExitCelebrationModal } from "@/components/exit-celebration-modal";
 import { StepCard } from "@/components/step-card";
 import {
   exitTriggeredEvent,
@@ -20,11 +21,14 @@ import {
   canExecuteProposal,
   explorerTxUrl,
   formatThresholdChange,
+  initialExitWatch,
+  isNewExit,
   pickLatestLog,
   ProposalState,
   proposalStateLabel,
   proposalCountdownCopy,
   runProposalExecution,
+  type ExitWatch,
 } from "@/lib/governance";
 import { scanLogsIncremental, type ChainLog } from "@/lib/logs";
 import { bpsToCopy, formatDecimal } from "@/lib/position";
@@ -39,7 +43,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 text-sm">
       <dt className="text-slate-400">{label}</dt>
-      <dd className="font-mono text-slate-200">{value}</dd>
+      <dd className="font-mono text-base font-medium text-slate-100">{value}</dd>
     </div>
   );
 }
@@ -75,6 +79,11 @@ export function GovernancePanel() {
   const [executing, setExecuting] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [executionHash, setExecutionHash] = useState<`0x${string}` | null>(null);
+  const [celebrationOpen, setCelebrationOpen] = useState(false);
+  // Live-only exit watch: the receipt hash captured when the exit scan first
+  // resolved on this page. A reload never re-triggers the celebration because
+  // the baseline is re-captured on mount and nothing is persisted.
+  const exitWatchRef = useRef<ExitWatch>(initialExitWatch());
 
   const readReady = Boolean(publicClient && pool && governance && govExit);
 
@@ -296,6 +305,24 @@ export function GovernancePanel() {
       ? avaxReturned(preCollateral, preDebt, avaxPriceUsd)
       : undefined;
   const currentDebt = positionQuery.data?.[1];
+  const latestExitHash = exit?.transactionHash ?? null;
+
+  // Celebrate only when the receipt changes during this session: the first
+  // resolved poll seeds the baseline, a changed hash pops the modal, and the
+  // baseline moves with it so the same exit never announces itself twice.
+  useEffect(() => {
+    if (exitLogQuery.isLoading) return;
+    const watch = exitWatchRef.current;
+    if (!watch.initialized) {
+      watch.initialized = true;
+      watch.baseline = latestExitHash;
+      return;
+    }
+    if (isNewExit(watch, latestExitHash)) {
+      watch.baseline = latestExitHash;
+      setCelebrationOpen(true);
+    }
+  }, [latestExitHash, exitLogQuery.isLoading]);
 
   if (!pool || !governance || !govExit) {
     return (
@@ -309,6 +336,7 @@ export function GovernancePanel() {
   }
 
   return (
+    <>
     <StepCard
       step={4}
       title="Watch the automatic exit"
@@ -449,5 +477,16 @@ export function GovernancePanel() {
       </div>
       </div>
     </StepCard>
+    <ExitCelebrationModal
+      open={celebrationOpen}
+      onClose={() => setCelebrationOpen(false)}
+      receipt={{
+        debtRepaidWei: preDebt,
+        avaxReturnedWei: returnedAvax,
+        transactionHash: latestExitHash,
+        explorerBase: EXPLORER_BASE,
+      }}
+    />
+    </>
   );
 }

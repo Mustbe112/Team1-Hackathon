@@ -2,6 +2,8 @@
 @config "../tailwind.config.ts";
 
 @theme {
+  --font-sans: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
   --color-slate-950: #0c1119;
   --color-slate-900: #151c27;
   --color-slate-800: #2b3545;
@@ -17,7 +19,7 @@
 }
 
 :root { color-scheme: dark; }
-body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; }
+body { font-family: var(--font-sans); line-height: 1.6; }
 button, input, a { -webkit-tap-highlight-color: transparent; }
 button, input { border-radius: 8px; min-height: 48px; font-size: 16px; }
 button { padding: 12px 20px; cursor: pointer; line-height: 1.5; }
@@ -79,6 +81,27 @@ h1 span { color: #9caac0; }
 .dashboard-footer > span span { padding: 0 8px; }
 .skip-link { position: absolute; top: 16px; left: 16px; background: #69d8ed; color: #0c1119; border-radius: 8px; padding: 12px 20px; transform: translateY(-180%); z-index: 10; }
 .skip-link:focus { transform: translateY(0); }
+
+/* Exit celebration modal — the payoff moment. */
+.exit-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgb(12 17 25 / 0.78); }
+.exit-dialog { width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; background: #151c27; border: 1px solid #2b3545; border-radius: 8px; padding: 32px 24px 24px; }
+.exit-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgb(16 185 129 / 0.15); color: #6ee7b7; font-size: 24px; font-weight: 700; }
+.exit-title { font-size: 24px; font-weight: 600; letter-spacing: -.02em; color: #eef2f7; }
+.exit-copy { color: #b0bdd0; font-size: 15px; line-height: 1.6; max-width: 40ch; }
+.exit-rows { width: 100%; display: grid; gap: 0; }
+.exit-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #2b3545; font-size: 15px; }
+.exit-rows > div:first-child { border-top: 1px solid #2b3545; }
+.exit-rows dt { color: #9caac0; text-align: left; }
+.exit-rows dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: #eef2f7; overflow-wrap: anywhere; }
+.exit-link { color: #69d8ed; font-size: 15px; text-decoration: underline; text-underline-offset: 2px; }
+.exit-acknowledge { margin-top: 8px; width: 100%; background: #69d8ed; color: #0c1119; font-weight: 500; }
+.exit-acknowledge:hover { background: #9ce5f2; }
+@media (prefers-reduced-motion: no-preference) {
+  .exit-overlay { animation: exit-fade 200ms cubic-bezier(.4,0,.2,1); }
+  .exit-dialog { animation: exit-pop 250ms cubic-bezier(.4,0,.2,1); }
+}
+@keyframes exit-fade { from { opacity: 0; } }
+@keyframes exit-pop { from { opacity: 0; transform: translateY(16px) scale(.96); } }
 @media (prefers-reduced-motion: no-preference) { button { transition: transform 150ms cubic-bezier(.4,0,.2,1), opacity 150ms cubic-bezier(.4,0,.2,1); } }
 @media (max-width: 767px) {
   .dashboard-shell { padding: 0 16px; }

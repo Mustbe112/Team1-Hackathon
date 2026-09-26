@@ -7,6 +7,8 @@ import {
   explorerTxUrl,
   formatCountdown,
   formatThresholdChange,
+  initialExitWatch,
+  isNewExit,
   proposalCountdownCopy,
   pickLatestLog,
   proposalStateLabel,
@@ -167,4 +169,20 @@ test("a queued proposal becomes executable at the on-chain deadline only", () =>
   }
   assert.equal(canExecuteProposal(1, undefined, 1001n), false);
   assert.equal(canExecuteProposal(1, 1000n, undefined), false);
+});
+
+// The celebration is live-only: it fires when a receipt *changes* during the
+// session, and never re-fires for the exit that already existed at mount.
+test("the exit celebration fires only for a receipt newer than the mount baseline", () => {
+  const armed = (baseline: `0x${string}` | null) => ({ ...initialExitWatch(), initialized: true, baseline });
+  // The first poll resolving must seed the baseline, never fire — not even
+  // for an exit that happened before this page was opened.
+  assert.equal(isNewExit(initialExitWatch(), "0xabc"), false);
+  assert.equal(isNewExit(armed("0xabc"), "0xabc"), false);
+  assert.equal(isNewExit(armed("0xabc"), "0xbcd"), true);
+  // A failed read (undefined) must not celebrate or disturb the baseline.
+  assert.equal(isNewExit(armed("0xabc"), undefined), false);
+  // From "no exit at mount" to the first exit appearing live.
+  assert.equal(isNewExit(armed(null), null), false);
+  assert.equal(isNewExit(armed(null), "0xbcd"), true);
 });

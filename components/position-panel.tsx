@@ -25,7 +25,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 text-sm">
       <dt className="text-slate-400">{label}</dt>
-      <dd className="font-mono text-slate-200">{value}</dd>
+      <dd className="font-mono text-base font-medium text-slate-100">{value}</dd>
     </div>
   );
 }

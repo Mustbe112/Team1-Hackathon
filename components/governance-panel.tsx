@@ -6,6 +6,7 @@ import { readContract } from "viem/actions";
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient } from "wagmi";
 
+import { StepCard } from "@/components/step-card";
 import {
   exitTriggeredEvent,
   govExitAbi,
@@ -266,11 +267,8 @@ export function GovernancePanel() {
 
   if (!pool || !governance || !govExit) {
     return (
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Governance Proposal
-        </h2>
-        <p className="mt-4 text-sm text-amber-300">
+      <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+        <p className="text-sm text-amber-300">
           Contract addresses are not configured. Set the <code>NEXT_PUBLIC_*</code>{" "}
           addresses in <code>.env</code>.
         </p>
@@ -279,11 +277,13 @@ export function GovernancePanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Governance Proposal
-        </h2>
+    <StepCard
+      step={4}
+      title="Watch the automatic exit"
+      subtitle="The waiting period runs. When it ends, the proposed safety limit takes effect — GovExit should already have closed your position."
+    >
+      <div className="flex flex-col gap-4">
+        <h3 className="text-xs font-semibold text-slate-300">Proposal</h3>
 
         {proposalLogQuery.isLoading ? (
           <p className="mt-4 text-sm text-slate-500">Reading the latest Proposal…</p>
@@ -297,7 +297,7 @@ export function GovernancePanel() {
         ) : (
           <dl className="mt-4 flex flex-col gap-2">
             <Row
-              label="Liquidation threshold"
+              label="Safety limit"
               value={
                 currentBps === undefined || proposedBps === undefined
                   ? "…"
@@ -305,37 +305,32 @@ export function GovernancePanel() {
               }
             />
             <Row
-              label="Proposal state"
+              label="Proposal status"
               value={proposalState === undefined ? "…" : proposalStateLabel(proposalState)}
             />
-            <Row label="Executes in" value={countdownCopy} />
+            <Row label="Takes effect in" value={countdownCopy} />
           </dl>
         )}
 
-        <p className="mt-4 text-xs text-slate-500">
-          The Timelock is mock governance timing
+        <p className="mt-4 text-xs leading-relaxed text-slate-500">
+          The waiting period is mock governance timing
           {timelockSeconds !== undefined ? ` (${timelockSeconds.toString()} seconds)` : ""}, not
           Aave&apos;s real 1-day delay.
         </p>
 
         {shouldExit && (
           <p className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            ⚠ Your Exit rule is triggered — the proposed Liquidation threshold is below your
-            Minimum threshold, and the Exit agent will close your Position before the Timelock
-            ends.
+            ⚠ Your rule is triggered — the proposed safety limit is below your minimum, so
+            GovExit will close your position before the waiting period ends.
           </p>
         )}
         {!shouldExit && ruleTriggered && (
           <p className="mt-4 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-            ✓ Your Exit rule is Triggered — an Automatic exit has already closed this Position.
+            ✓ Your rule triggered — an automatic exit has already closed this position.
           </p>
         )}
-      </section>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Automatic Exit
-        </h2>
+      <div className="border-t border-slate-800 pt-4">
+        <h3 className="text-xs font-semibold text-slate-300">Automatic exit</h3>
 
         {!address ? (
           <p className="mt-4 text-sm text-slate-500">
@@ -343,8 +338,8 @@ export function GovernancePanel() {
           </p>
         ) : !exit ? (
           <p className="mt-4 text-sm text-slate-500">
-            No Automatic exit yet. When the Exit rule trips, the Keeper calls the Exit agent,
-            GovExit closes the Position, and the transaction appears here.
+            No automatic exit yet. When your rule trips, the Keeper calls GovExit, the position
+            is closed, and the transaction appears here.
           </p>
         ) : (
           <div className="mt-4 flex flex-col gap-2">
@@ -356,7 +351,10 @@ export function GovernancePanel() {
                   preDebt === undefined ? "…" : `${formatDecimal(preDebt, 18)} mUSDC`
                 }
               />
-              <Row label="Debt remaining" value={`$${formatDecimal(currentDebt ?? 0n, 18)}`} />
+              <Row
+                label="Debt remaining"
+                value={`${formatDecimal(currentDebt ?? 0n, 18)} mUSDC`}
+              />
               <Row
                 label="AVAX returned"
                 value={
@@ -383,7 +381,8 @@ export function GovernancePanel() {
             </dl>
           </div>
         )}
-      </section>
-    </div>
+      </div>
+      </div>
+    </StepCard>
   );
 }

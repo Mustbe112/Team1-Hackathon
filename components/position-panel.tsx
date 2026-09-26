@@ -6,6 +6,7 @@ import { readContract, waitForTransactionReceipt, writeContract } from "viem/act
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
+import { StepCard } from "@/components/step-card";
 import { govExitAbi, mockLendingPoolAbi } from "@/lib/abis";
 import { env } from "@/lib/env";
 import {
@@ -13,6 +14,7 @@ import {
   collateralValueUsd,
   formatDecimal,
   healthStatus,
+  maxBorrow,
   parsePercentToBps,
   parseTokenAmount,
   validateOpenPosition,
@@ -28,7 +30,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Position + Exit-rule panel (issue 13).
+ * Step 1 (open a Position) and step 2 (set the Exit rule) — issue 13.
  *
  * Reads the Position, the pool's Liquidation threshold, the health factor, the
  * user's Exit rule, and the Exit-agent approval straight from Fuji with viem
@@ -130,6 +132,13 @@ export function PositionPanel() {
     avaxPriceUsd !== undefined ? collateralValueUsd(collateral, avaxPriceUsd) : undefined;
   const status = healthQuery.data !== undefined ? healthStatus(healthQuery.data) : undefined;
 
+  // "You can borrow up to …" preview for the amounts currently typed in step 1.
+  const enteredCollateral = parseTokenAmount(openCollateral);
+  const borrowLimit =
+    enteredCollateral !== null && avaxPriceUsd !== undefined && thresholdBps !== undefined
+      ? maxBorrow(enteredCollateral, avaxPriceUsd, thresholdBps)
+      : undefined;
+
   const rule = ruleQuery.data;
   const ruleMinimumBps = rule?.[0];
   const ruleActive = rule?.[1] === true;
@@ -158,7 +167,7 @@ export function PositionPanel() {
       if (!approved) {
         // AC: a rule can never be created through the UI without approval. `setRule`
         // also reverts on-chain unless this approval is already in place.
-        setBusy("Approving GovExit as your Exit agent…");
+        setBusy("Approving GovExit as your exit agent…");
         const approveHash = await writeContract(walletClient, {
           address: pool,
           abi: mockLendingPoolAbi,
@@ -167,7 +176,7 @@ export function PositionPanel() {
         });
         await waitForTransactionReceipt(publicClient, { hash: approveHash });
       }
-      setBusy("Setting your Exit rule…");
+      setBusy("Saving your protection rule…");
       const ruleHash = await writeContract(walletClient, {
         address: govExit,
         abi: govExitAbi,
@@ -186,7 +195,7 @@ export function PositionPanel() {
   async function handleOpenPosition(event: FormEvent) {
     event.preventDefault();
     if (!writeReady || !walletClient || !publicClient || !pool) {
-      setError("Connect your wallet to Avalanche Fuji to open a Position.");
+      setError("Connect your wallet to Avalanche Fuji to open a position.");
       return;
     }
     const collateralWei = parseTokenAmount(openCollateral);
@@ -196,7 +205,7 @@ export function PositionPanel() {
       return;
     }
     if (avaxPriceUsd === undefined || thresholdBps === undefined) {
-      setError("Still reading the pool's price and Liquidation threshold.");
+      setError("Still reading the pool's price and safety limit.");
       return;
     }
     const valid = validateOpenPosition({
@@ -211,7 +220,7 @@ export function PositionPanel() {
     }
     setError(null);
     try {
-      setBusy("Opening your Position…");
+      setBusy("Opening your position…");
       const hash = await writeContract(walletClient, {
         address: pool,
         abi: mockLendingPoolAbi,
@@ -230,11 +239,8 @@ export function PositionPanel() {
 
   if (!pool || !govExit) {
     return (
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Your Position
-        </h2>
-        <p className="mt-4 text-sm text-amber-300">
+      <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+        <p className="text-sm text-amber-300">
           Contract addresses are not configured. Set the <code>NEXT_PUBLIC_*</code>{" "}
           addresses in <code>.env</code>.
         </p>
@@ -244,38 +250,78 @@ export function PositionPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Your Position
-        </h2>
-        {!address ? (
-          <p className="mt-4 text-sm text-slate-500">
-            Connect your wallet to read your Position.
-          </p>
-        ) : !active ? (
-          <p className="mt-4 text-sm text-slate-500">
-            No active Position for this wallet.
-          </p>
-        ) : (
-          <dl className="mt-4 flex flex-col gap-2">
+      <StepCard
+        step={1}
+        title="Borrow against your AVAX"
+        subtitle="Deposit AVAX as security (your collateral), then borrow mUSDC against it. The pool caps your debt at a share of your collateral's value."
+      >
+        <form className="flex flex-col gap-3" onSubmit={handleOpenPosition}>
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-400">Collateral (AVAX)</span>
+              <input
+                aria-label="Collateral AVAX"
+                className="w-32 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                inputMode="decimal"
+                placeholder="0.02"
+                value={openCollateral}
+                onChange={(event) => setOpenCollateral(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-400">Borrow (mUSDC)</span>
+              <input
+                aria-label="Borrow mUSDC"
+                className="w-32 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                inputMode="decimal"
+                placeholder="0.26"
+                value={openBorrow}
+                onChange={(event) => setOpenBorrow(event.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
+              disabled={busy !== null || !address}
+            >
+              {busy === "Opening your position…" ? busy : "Open position"}
+            </button>
+          </div>
+
+          {thresholdBps !== undefined && (
+            <p className="text-xs leading-relaxed text-slate-500">
+              Safety limit: <span className="text-slate-300">{bpsToCopy(thresholdBps)}</span> of
+              your collateral&apos;s value
+              {borrowLimit !== undefined && (
+                <>
+                  {" "}
+                  — with {openCollateral} AVAX you can borrow up to{" "}
+                  <span className="text-slate-300">{formatDecimal(borrowLimit, 18)} mUSDC</span>
+                </>
+              )}
+              .
+            </p>
+          )}
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </form>
+
+        {address && active && (
+          <dl className="mt-4 flex flex-col gap-2 border-t border-slate-800 pt-4">
             <Row
               label="Collateral"
               value={positionQuery.isLoading ? "…" : `${formatDecimal(collateral, 18)} AVAX`}
             />
             <Row
-              label="Value"
-              value={
-                usdValue === undefined
-                  ? "…"
-                  : `$${formatDecimal(usdValue, 18)}`
-              }
+              label="Collateral value"
+              value={usdValue === undefined ? "…" : `$${formatDecimal(usdValue, 18)}`}
             />
             <Row
               label="Debt"
               value={positionQuery.isLoading ? "…" : `${formatDecimal(debt, 18)} mUSDC`}
             />
             <Row
-              label="Current Liquidation threshold"
+              label="Safety limit"
               value={thresholdBps === undefined ? "…" : bpsToCopy(thresholdBps)}
             />
             <div className="flex items-center justify-between gap-4 text-sm">
@@ -291,23 +337,33 @@ export function PositionPanel() {
                         : "rounded-md bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-300"
                     }
                   >
-                    {status}
+                    {status === "SAFE" ? "SAFE" : "AT RISK"}
                   </span>
                 )}
               </dd>
             </div>
           </dl>
         )}
-      </section>
+        {address && !active && (
+          <p className="mt-4 border-t border-slate-800 pt-4 text-sm text-slate-500">
+            No active position yet — open one above and it will appear here.
+          </p>
+        )}
+        {!address && (
+          <p className="mt-4 text-sm text-slate-500">
+            Connect your wallet to open a position.
+          </p>
+        )}
+      </StepCard>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          GovExit Protection
-        </h2>
-
-        <form className="mt-4 flex flex-col gap-3" onSubmit={handleSetRule}>
-          <label className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
-            <span>Exit if the Liquidation threshold drops below</span>
+      <StepCard
+        step={2}
+        title="Set your protection rule"
+        subtitle="If governance proposes a safety limit below your number, GovExit closes your position for you — automatically, before the change takes effect."
+      >
+        <form className="flex flex-col gap-3" onSubmit={handleSetRule}>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+            <span>Exit me if the safety limit drops below</span>
             <span className="flex items-center gap-2">
               <input
                 aria-label="Minimum threshold percent"
@@ -326,8 +382,12 @@ export function PositionPanel() {
             className="w-fit rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60"
             disabled={busy !== null || !address}
           >
-            {busy ?? (approved ? "Set Exit rule" : "Approve Exit agent & set rule")}
+            {busy ?? (approved ? "Set protection rule" : "Approve GovExit & set rule")}
           </button>
+
+          <p className="text-xs leading-relaxed text-slate-500">
+            Approving lets GovExit close your position for you. It can do nothing else.
+          </p>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
         </form>
@@ -336,78 +396,26 @@ export function PositionPanel() {
           <div className="mt-4 border-t border-slate-800 pt-4">
             {protectionActive ? (
               <p className="text-sm font-medium text-emerald-300">
-                🛡 Protection Active — current rule: exit if the Liquidation threshold drops
-                below {ruleMinimumBps === undefined ? "…" : bpsToCopy(ruleMinimumBps)}.
+                🛡 Protection active — exit if the safety limit drops below{" "}
+                {ruleMinimumBps === undefined ? "…" : bpsToCopy(ruleMinimumBps)}.
               </p>
             ) : ruleTriggered ? (
               <p className="text-sm text-amber-300">
-                Your Exit rule has triggered; the position was already closed by an Automatic
-                exit.
+                Your rule triggered and the position was already closed by an automatic exit.
               </p>
             ) : (
-              <p className="text-sm text-slate-500">No active protection.</p>
+              <p className="text-sm text-slate-500">No protection set yet.</p>
             )}
 
             {approvalRevoked && (
               <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                ⚠ Your Exit agent approval was revoked. The Exit rule cannot fire until you
-                approve GovExit again — setting the rule above re-approves it.
+                ⚠ Your exit agent approval was revoked. The rule cannot fire until you approve
+                GovExit again — setting the rule above re-approves it.
               </p>
             )}
           </div>
         )}
-      </section>
-
-      <section className="rounded-xl border border-dashed border-slate-700 bg-slate-900/20 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Open Position — demo addition
-        </h2>
-        <p className="mt-2 text-xs text-slate-500">
-          Added for the live demo: the connected wallet needs a Position before this panel
-          shows values. Deposits AVAX Collateral and borrows mUSDC from the pool.
-        </p>
-        <form className="mt-4 flex flex-col gap-3" onSubmit={handleOpenPosition}>
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <span className="text-slate-400">Collateral</span>
-              <input
-                aria-label="Collateral AVAX"
-                className="w-28 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                inputMode="decimal"
-                placeholder="10"
-                value={openCollateral}
-                onChange={(event) => setOpenCollateral(event.target.value)}
-              />
-              <span className="text-slate-400">AVAX</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <span className="text-slate-400">Borrow</span>
-              <input
-                aria-label="Borrow mUSDC"
-                className="w-28 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-                inputMode="decimal"
-                placeholder="130"
-                value={openBorrow}
-                onChange={(event) => setOpenBorrow(event.target.value)}
-              />
-              <span className="text-slate-400">mUSDC</span>
-            </label>
-            <button
-              type="submit"
-              className="rounded-md border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 hover:border-slate-400 disabled:opacity-60"
-              disabled={busy !== null || !address}
-            >
-              Open Position
-            </button>
-          </div>
-          {thresholdBps !== undefined && (
-            <p className="text-xs text-slate-500">
-              Current Liquidation threshold {bpsToCopy(thresholdBps)}; Debt is capped at
-              collateral value × threshold.
-            </p>
-          )}
-        </form>
-      </section>
+      </StepCard>
     </div>
   );
 }

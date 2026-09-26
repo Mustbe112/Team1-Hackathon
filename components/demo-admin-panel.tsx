@@ -6,6 +6,7 @@ import { readContract, waitForTransactionReceipt, writeContract } from "viem/act
 import { avalancheFuji } from "wagmi/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
+import { StepCard } from "@/components/step-card";
 import { mockGovernanceAbi, mockLendingPoolAbi } from "@/lib/abis";
 import {
   DEFAULT_PROPOSAL_PERCENT,
@@ -31,14 +32,14 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Demo Admin panel (issue 15).
+ * Step 3 — the trusted Demo Admin (issue 15).
  *
- * A deliberately separate, visually distinct section for the trusted Demo
- * Admin — the single address that owns `MockGovernance`. It shows the current
- * Liquidation threshold and lets the connected Core wallet queue a Proposal
- * (`queueThresholdChange`) and set the Timelock (`setTimelock`). Ownership is
- * read from `owner()` and compared to the connected address; a non-owner sees a
- * clear error rather than a raw revert. No private key is ever in the browser.
+ * A deliberately separate, visually distinct section for the single address
+ * that owns `MockGovernance`. It shows the current Liquidation threshold and
+ * lets the connected Core wallet queue a Proposal (`queueThresholdChange`) and
+ * set the Timelock (`setTimelock`). Ownership is read from `owner()` and
+ * compared to the connected address; a non-owner sees a clear error rather than
+ * a raw revert. No private key is ever in the browser.
  */
 export function DemoAdminPanel() {
   const pool = env.addresses.lendingPool;
@@ -111,7 +112,7 @@ export function DemoAdminPanel() {
       return;
     }
     if (!writeReady || !walletClient || !publicClient || !governance) {
-      setError("Connect your wallet to Avalanche Fuji to queue a Proposal.");
+      setError("Connect your wallet to Avalanche Fuji to queue a proposal.");
       return;
     }
     if (!isOwner) {
@@ -145,7 +146,7 @@ export function DemoAdminPanel() {
       return;
     }
     if (!writeReady || !walletClient || !publicClient || !governance) {
-      setError("Connect your wallet to Avalanche Fuji to set the Timelock.");
+      setError("Connect your wallet to Avalanche Fuji to set the waiting period.");
       return;
     }
     if (!isOwner) {
@@ -172,11 +173,8 @@ export function DemoAdminPanel() {
 
   if (!pool || !governance) {
     return (
-      <section className="rounded-xl border-2 border-dashed border-amber-500/50 bg-amber-500/5 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-300">
-          DEMO ADMIN
-        </h2>
-        <p className="mt-4 text-sm text-amber-300">
+      <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+        <p className="text-sm text-amber-300">
           Contract addresses are not configured. Set the <code>NEXT_PUBLIC_*</code>{" "}
           addresses in <code>.env</code>.
         </p>
@@ -185,30 +183,26 @@ export function DemoAdminPanel() {
   }
 
   return (
-    <section className="rounded-xl border-2 border-dashed border-amber-500/50 bg-amber-500/5 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-300">
-          DEMO ADMIN
-        </h2>
-        <span className="rounded-md bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
-          Trusted proposer · MockGovernance owner
-        </span>
-      </div>
-      <p className="mt-2 text-xs text-amber-200/80">
-        The Demo Admin stands in for a DAO: the connected owner wallet queues the Proposal.
-        Not a voter, and not the Keeper.
-      </p>
+    <StepCard
+      step={3}
+      tone="admin"
+      title="Act as governance (Demo Admin)"
+      subtitle="Standing in for a DAO: propose lowering the safety limit. Only the Demo Admin wallet can queue a proposal — it is not a voter, and not the Keeper."
+    >
+      <span className="rounded-md bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
+        Demo Admin · MockGovernance owner
+      </span>
 
       <dl className="mt-4">
         <Row
-          label="Current Liquidation threshold"
+          label="Current safety limit"
           value={thresholdBps === undefined ? "…" : bpsToCopy(thresholdBps)}
         />
       </dl>
 
       {!address ? (
         <p className="mt-4 text-sm text-amber-200/80">
-          Connect the Demo Admin wallet to queue a Proposal or set the Timelock.
+          Connect the Demo Admin wallet to queue a proposal or set the waiting period.
         </p>
       ) : notOwner ? (
         <p className="mt-4 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -223,61 +217,57 @@ export function DemoAdminPanel() {
       )}
 
       <form className="mt-4 flex flex-col gap-4" onSubmit={handleQueue}>
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
-            <span className="text-slate-400">Proposal value</span>
-            <span className="flex items-center gap-2">
-              <input
-                aria-label="Proposal value percent"
-                className="w-24 rounded-md border border-amber-500/40 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-amber-400 focus:outline-none"
-                inputMode="decimal"
-                value={proposalPercent}
-                onChange={(event) => setProposalPercent(event.target.value)}
-              />
-              <span className="text-slate-400">%</span>
-            </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-amber-200/80">New safety limit (%)</span>
+            <input
+              aria-label="Proposal value percent"
+              className="w-28 rounded-md border border-amber-500/40 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-amber-400 focus:outline-none"
+              inputMode="decimal"
+              value={proposalPercent}
+              onChange={(event) => setProposalPercent(event.target.value)}
+            />
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
-            <span className="text-slate-400">Timelock</span>
-            <span className="flex items-center gap-2">
-              <input
-                aria-label="Timelock seconds"
-                className="w-24 rounded-md border border-amber-500/40 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-amber-400 focus:outline-none"
-                inputMode="numeric"
-                value={timelockInput}
-                onChange={(event) => setTimelockInput(event.target.value)}
-              />
-              <span className="text-slate-400">sec</span>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-amber-200/80">
+              Waiting period (seconds)
             </span>
+            <input
+              aria-label="Timelock seconds"
+              className="w-28 rounded-md border border-amber-500/40 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 focus:border-amber-400 focus:outline-none"
+              inputMode="numeric"
+              value={timelockInput}
+              onChange={(event) => setTimelockInput(event.target.value)}
+            />
           </label>
         </div>
 
-        <button
-          type="submit"
-          className="w-fit rounded-md bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50"
-          disabled={busy !== null || !writeReady || !isOwner}
-        >
-          {busy === "queue" ? "Queueing Proposal…" : "Queue Governance Proposal"}
-        </button>
-
-        <button
-          type="button"
-          className="w-fit rounded-md border border-amber-500/60 px-4 py-2 text-sm font-medium text-amber-200 hover:border-amber-400 disabled:opacity-50"
-          disabled={busy !== null || !writeReady || !isOwner}
-          onClick={handleSetTimelock}
-        >
-          {busy === "timelock" ? "Setting Timelock…" : "Set Timelock"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            className="rounded-md bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+            disabled={busy !== null || !writeReady || !isOwner}
+          >
+            {busy === "queue" ? "Queueing proposal…" : "Queue governance proposal"}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-amber-500/60 px-4 py-2 text-sm font-medium text-amber-200 hover:border-amber-400 disabled:opacity-50"
+            disabled={busy !== null || !writeReady || !isOwner}
+            onClick={handleSetTimelock}
+          >
+            {busy === "timelock" ? "Setting waiting period…" : "Set waiting period"}
+          </button>
+        </div>
 
         {error && <p className="text-xs text-red-400">{error}</p>}
       </form>
 
-      <p className="mt-4 border-t border-amber-500/20 pt-4 text-xs text-amber-200/70">
-        The Timelock is mock governance timing
+      <p className="mt-4 border-t border-amber-500/20 pt-4 text-xs leading-relaxed text-amber-200/70">
+        This is mock governance timing
         {timelockSeconds !== undefined ? ` (${timelockSeconds.toString()} seconds)` : ""}, not
-        Aave&apos;s real 1-day delay. The newly queued Proposal&apos;s countdown appears in the
-        Governance Proposal section above.
+        Aave&apos;s real 1-day delay. The queued proposal&apos;s countdown appears in step 4.
       </p>
-    </section>
+    </StepCard>
   );
 }

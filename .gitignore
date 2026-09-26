@@ -24,3 +24,5 @@ contracts/broadcast/**/dry-run/
 # OS / editor
 .DS_Store
 *.log
+.vercel
+.scratch/

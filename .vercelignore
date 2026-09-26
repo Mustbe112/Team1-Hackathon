@@ -1,0 +1,11 @@
+.env
+.env.*
+.scratch/
+.git/
+contracts/
+keeper/*
+!keeper/logic.ts
+scripts/
+node_modules/
+.next/
+*.tsbuildinfo
